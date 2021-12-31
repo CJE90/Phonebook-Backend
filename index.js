@@ -1,6 +1,9 @@
+require('dotenv').config()
 const express = require('express')
 const app = express();
 const morgan = require('morgan')
+const People = require('./models/person')
+
 app.use(express.json())
 
 const requestLogger = (request, response, next) => {
@@ -28,92 +31,80 @@ app.use(cors())
 
 app.use(express.static('build'))
 
-let people = [
-    {
-        "id": 1,
-        "name": "Arto Hellas",
-        "number": "040-123456"
-    },
-    {
-        "id": 2,
-        "name": "Ada Lovelace",
-        "number": "39-44-5323523"
-    },
-    {
-        "id": 3,
-        "name": "Dan Abramov",
-        "number": "12-43-234345"
-    },
-    {
-        "id": 4,
-        "name": "Mary Poppendieck",
-        "number": "39-23-6423122"
-    }
-]
+
 app.get('/', (request, response) => {
     response.send('<h1>Well, Where do you want to go?</h1>')
 })
 
 app.get('/api/people', (request, response) => {
-    response.json(people)
+    People.find({}).then(people => {
+        response.json(people)
+    })
 })
+
 
 app.get('/api/people/:id', (request, response) => {
-    const id = Number(request.params.id);
-    const person = people.find(person => person.id === id);
-    if (person) {
-        response.json(person)
-    } else {
-        response.status(404).end();
-    }
+    People.findById(request.params.id)
+        .then(person => {
+            if (person) {
+                response.json(person)
+            } else {
+                response.status(404).end()
+            }
+        })
+        .catch(error => next(error))
 })
 
-app.delete('/api/people/:id', (request, response) => {
-    const id = Number(request.params.id)
-    console.log(id);
-    people = people.filter(person => person.id !== id)
-
-    response.status(204).end()
+app.delete('/api/people/:id', (request, response, next) => {
+    People.findByIdAndRemove(request.params.id)
+        .then(result => {
+            response.status(204).end()
+        })
+        .catch(error => next(error))
 })
-
-const generateId = () => {
-    function getRandomArbitrary(min, max) {
-        return Math.random() * (max - min) + min;
-    }
-    let min = 0;
-    let max = 1000000;
-    return Math.round(getRandomArbitrary(min, max));
-}
 
 app.post('/api/people', (request, response) => {
-    const person = request.body;
-    if (!person.name || !person.number) {
+    const body = request.body;
+    if (!body.name || !body.number) {
         return response.status(400).json({
             error: 'content missing'
         })
     }
-    if (people.find(p => p.name === person.name)) {
-        return response.status(400).json({
-            error: 'Person Already Exists'
-        })
+
+    const person = new People({
+        name: body.name,
+        number: body.number
+    })
+
+    person.save().then(savedPerson => {
+        response.json(savedPerson);
+    })
+})
+
+app.put('/api/people/:id', (request, response, next) => {
+    const body = request.body
+
+    const person = {
+        name: body.name,
+        number: body.number,
     }
 
-    const randId = generateId();
-
-    person.id = randId;
-    people = people.concat(person)
-    console.log(people);
-    response.json(people)
+    People.findByIdAndUpdate(request.params.id, person, { new: true })
+        .then(updatedPerson => {
+            response.json(updatedPerson)
+        })
+        .catch(error => next(error))
 })
 
 app.get('/api/info', (request, response) => {
-    const date = new Date().toDateString();
-    const time = new Date().toTimeString();
+    People.countDocuments({}).then(result => {
+        const date = new Date().toDateString();
+        const time = new Date().toTimeString();
 
-    response.write(`<p>Phonebook contains info for ${people.length} people</p>`)
-    response.write(date + " " + time);
-    response.send();
-
+        response.write(`<p>Phonebook contains info for ${result} people</p>`)
+        response.write(date + " " + time);
+        response.send();
+    })
 })
 
 const unknownEndpoint = (request, response) => {
@@ -122,7 +113,20 @@ const unknownEndpoint = (request, response) => {
 
 app.use(unknownEndpoint)
 
-const PORT = process.env.PORT || 3001
+const PORT = process.env.PORT
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`)
 })
+
+const errorHandler = (error, request, response, next) => {
+    console.error(error.message)
+
+    if (error.name === 'CastError') {
+        return response.status(400).send({ error: 'malformatted id' })
+    }
+
+    next(error)
+}
+
+// this has to be the last loaded middleware.
+app.use(errorHandler)

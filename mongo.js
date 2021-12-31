@@ -6,7 +6,6 @@ if (process.argv.length < 3) {
 }
 else {
     const password = process.argv[2]
-
     const url =
         `mongodb+srv://fullstack:${password}@cluster0.yjhfi.mongodb.net/phonebook?retryWrites=true&w=majority`
     mongoose.connect(url)
@@ -14,9 +13,9 @@ else {
         name: String,
         number: String
     })
-
     const Person = mongoose.model('Person', personSchema)
     console.log(`length of arguments`, process.argv.length)
+
     if (process.argv.length == 3) {
         Person.find({}).then(result => {
             console.log(`phonebook:`)
